@@ -5,8 +5,12 @@ from io import BytesIO
 import docx
 import PyPDF2
 
-# Load summarization model
-summarizer = pipeline("summarization")
+# Load summarization model explicitly with caching
+@st.cache_resource
+def load_summarizer():
+    return pipeline("summarization", model="facebook/bart-large-cnn")
+
+summarizer = load_summarizer()
 
 # Define the top 20 skills or load a custom list
 DEFAULT_SKILLS = [
