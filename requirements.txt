@@ -1,0 +1,6 @@
+streamlit
+transformers
+pandas
+openpyxl
+python-docx
+pypdf2
