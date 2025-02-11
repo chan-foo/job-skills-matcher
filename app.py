@@ -68,11 +68,13 @@ def extract_responsibilities(text):
         return []
 
 # Semantic skill matching function
-def match_skills(responsibilities, skills, threshold=0.3):
+def match_skills(responsibilities, skills, threshold=0.2):
     responsibilities_str = " ".join(responsibilities)
     skills_embeddings = model.encode(skills, convert_to_tensor=True)
     responsibilities_embedding = model.encode(responsibilities_str, convert_to_tensor=True)
     similarities = util.cos_sim(responsibilities_embedding, skills_embeddings).flatten()
+    # For debugging: display similarity scores for each skill
+    st.write("Similarity scores:", {skill: float(similarities[i]) for i, skill in enumerate(skills)})
     matched_skills = [skills[i] for i in range(len(skills)) if similarities[i] > threshold]
     return matched_skills
 
