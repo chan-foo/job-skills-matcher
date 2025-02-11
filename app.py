@@ -42,7 +42,7 @@ program_options = {
     ]
 }
 
-# Let the user select the diploma program to use its skills list
+# Let the user select the diploma program
 program_choice = st.selectbox("Select your diploma program", list(program_options.keys()))
 skills_list = program_options[program_choice]
 
@@ -99,8 +99,6 @@ uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt"])
 
 if uploaded_file:
     text = extract_text_from_file(uploaded_file)
-    
-    # Extract responsibilities from the text
     responsibilities = extract_responsibilities(text)
     
     st.subheader("Extracted Responsibilities")
@@ -109,7 +107,6 @@ if uploaded_file:
     else:
         st.write("No responsibilities section found.")
     
-    # Match skills using semantic similarity
     matched_skills = match_skills(responsibilities, skills_list, threshold=0.15)
     
     st.subheader("Matched Skills:")
@@ -118,12 +115,19 @@ if uploaded_file:
     else:
         st.write("No matched skills based on the selected diploma program's skill set.")
     
-    # Optional: Generate a downloadable Excel file with the results
-    df = pd.DataFrame({
-        "Responsibilities": ["; ".join(responsibilities)],
-        "Matched Skills": [", ".join(matched_skills)]
+    # Generate an Excel file with two columns:
+    # Column 1: Full skill set from the diploma program
+    # Column 2: Skills required by the job (matched skills)
+    max_len = max(len(skills_list), len(matched_skills))
+    diploma_skills_padded = skills_list + [""] * (max_len - len(skills_list))
+    job_skills_padded = matched_skills + [""] * (max_len - len(matched_skills))
+    
+    df_excel = pd.DataFrame({
+        "Diploma Skills": diploma_skills_padded,
+        "Job Required Skills": job_skills_padded
     })
+    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
-    st.download_button("Download Results as Excel", output.getvalue(), "results.xlsx")
+        df_excel.to_excel(writer, index=False)
+    st.download_button("Download Comparison Results as Excel", output.getvalue(), "results_comparison.xlsx")
