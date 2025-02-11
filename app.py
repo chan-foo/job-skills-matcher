@@ -116,15 +116,13 @@ if uploaded_file:
         st.write("No matched skills based on the selected diploma program's skill set.")
     
     # Generate an Excel file with two columns:
-    # Column 1: Full skill set from the diploma program
-    # Column 2: Skills required by the job (matched skills)
-    max_len = max(len(skills_list), len(matched_skills))
-    diploma_skills_padded = skills_list + [""] * (max_len - len(skills_list))
-    job_skills_padded = matched_skills + [""] * (max_len - len(matched_skills))
+    # Column 1: Full diploma skills (from the selected program)
+    # Column 2: "Yes" if the skill was matched, blank otherwise
+    job_required = ["Yes" if skill in matched_skills else "" for skill in skills_list]
     
     df_excel = pd.DataFrame({
-        "Diploma Skills": diploma_skills_padded,
-        "Job Required Skills": job_skills_padded
+        "Diploma Skills": skills_list,
+        "Job Required Skills": job_required
     })
     
     output = BytesIO()
