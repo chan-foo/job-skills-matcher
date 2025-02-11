@@ -3,26 +3,45 @@ import pandas as pd
 from io import BytesIO
 import docx
 import PyPDF2
+import re
 from sentence_transformers import SentenceTransformer, util
 
-# Load the SentenceTransformer model
+# Load the similarity model and cache it to speed up processing
 @st.cache_resource
 def load_similarity_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 model = load_similarity_model()
 
-# Default list of skills (can be customized by the user)
-DEFAULT_SKILLS = [
-    "Basic Accounting and Bookkeeping", "Data Entry and Management", "Customer Service Skills",
-    "Communication Skills", "Time Management", "Sales and Marketing Basics", "Problem-Solving Skills",
-    "Financial Literacy", "Computer Literacy", "Organizational Skills", "Business Ethics", "Interpersonal Skills",
-    "Project Management Basics", "Administrative Skills", "Professionalism", "Analytical Skills", "Adaptability",
-    "Inventory Management", "Conflict Resolution", "Financial Software Familiarity"
-]
+# Define skills lists for different two-year diploma programs
+program_options = {
+    "Two-Year Business Diploma": [
+        "Basic Accounting and Bookkeeping", "Data Entry and Management", "Customer Service Skills", 
+        "Communication Skills", "Time Management", "Sales and Marketing Basics", "Problem-Solving Skills", 
+        "Financial Literacy", "Computer Literacy", "Organizational Skills", "Business Ethics", 
+        "Interpersonal Skills", "Project Management Basics", "Administrative Skills", "Professionalism", 
+        "Analytical Skills", "Adaptability", "Inventory Management", "Conflict Resolution", 
+        "Financial Software Familiarity"
+    ],
+    "Two-Year Administrative Diploma": [
+        "Office Administration", "Customer Service", "Communication Skills", "Data Entry", 
+        "Records Management", "Time Management", "Microsoft Office Proficiency", "Team Coordination", 
+        "Organizational Skills", "Problem Solving", "Professionalism"
+    ]
+    # You can add more programs as needed.
+}
 
+# Let the user select the diploma program (or use a custom skills list)
+program_choice = st.selectbox("Select your diploma program", list(program_options.keys()))
+skills_list = program_options[program_choice]
+
+# Option to override with a custom skills list if desired
+custom_skills_input = st.text_area("Or enter a custom skills list (comma-separated) instead:", "")
+if custom_skills_input.strip():
+    skills_list = [s.strip() for s in custom_skills_input.split(",") if s.strip()]
+
+# Function to extract text from various file types
 def extract_text_from_file(uploaded_file):
-    """Extract text from DOCX, PDF, or TXT files."""
     if uploaded_file.type == "application/pdf":
         reader = PyPDF2.PdfReader(uploaded_file)
         return " ".join([page.extract_text() for page in reader.pages])
@@ -32,82 +51,55 @@ def extract_text_from_file(uploaded_file):
     else:
         return uploaded_file.read().decode("utf-8")
 
+# Improved extraction of responsibilities using a regex-based approach
 def extract_responsibilities(text):
-    """
-    Extracts the responsibilities section from the job description.
-    It looks for keywords like "responsibilities" and stops when it finds "qualifications" or "how to apply".
-    """
-    lower_text = text.lower()
-    start_index = lower_text.find("responsibilities")
-    if start_index == -1:
-        return ["No clear 'Responsibilities' section found."]
-    
-    # Try to find an end marker (like the next section header)
-    end_index = lower_text.find("qualifications", start_index)
-    if end_index == -1:
-        end_index = lower_text.find("how to apply", start_index)
-    if end_index == -1:
-        end_index = len(text)
-    
-    # Extract the block of text
-    block = text[start_index:end_index]
-    # Remove any colon or header text and split by newlines
-    lines = block.split("\n")
-    responsibilities = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        # Remove the header line if it contains 'responsibilities'
-        if "responsibilities" in stripped.lower():
-            parts = stripped.split(":", 1)
-            if len(parts) > 1 and parts[1].strip():
-                responsibilities.append(parts[1].strip())
-        else:
-            responsibilities.append(stripped)
-    return responsibilities
+    # This regex looks for text following "Role Responsibilities" until another likely header appears.
+    pattern = re.compile(
+        r"(?:Role Responsibilities(?:\s*[:\-])?)(.*?)(?=QUALIFICATIONS|Requirements|How To Apply|$)",
+        re.IGNORECASE | re.DOTALL
+    )
+    match = pattern.search(text)
+    if match:
+        block = match.group(1).strip()
+        # Split the block into separate lines or bullet points
+        responsibilities = [line.strip() for line in re.split(r"[\n\.]+", block) if line.strip()]
+        return responsibilities
+    else:
+        return []
 
-def match_skills(responsibilities, skills):
-    """
-    Matches the responsibilities text against the provided skills list using semantic similarity.
-    A lower threshold is used to capture more loosely related matches.
-    """
+# Semantic skill matching function
+def match_skills(responsibilities, skills, threshold=0.3):
     responsibilities_str = " ".join(responsibilities)
     skills_embeddings = model.encode(skills, convert_to_tensor=True)
     responsibilities_embedding = model.encode(responsibilities_str, convert_to_tensor=True)
     similarities = util.cos_sim(responsibilities_embedding, skills_embeddings).flatten()
-    
-    # Set a lower threshold to capture more matches
-    threshold = 0.3
     matched_skills = [skills[i] for i in range(len(skills)) if similarities[i] > threshold]
     return matched_skills
 
-# Streamlit App Layout
+# Streamlit app layout
 st.title("Job Description Skills Matcher")
-st.write("Upload a job description file to extract and match skills.")
+st.write("Upload a job description file (.pdf, .docx, or .txt) to see which diploma-acquired skills match.")
 
-# File uploader for PDFs, DOCX, or TXT files
-uploaded_file = st.file_uploader("Choose a file (.pdf, .docx, or .txt)", type=["pdf", "docx", "txt"])
-
-# Allow user to provide a custom skills list
-custom_skills_input = st.text_area("Enter custom skills (comma-separated) or leave blank for default:", "")
-skills_list = [s.strip() for s in custom_skills_input.split(",")] if custom_skills_input else DEFAULT_SKILLS
+uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt"])
 
 if uploaded_file:
-    # Extract text from the uploaded file
     text = extract_text_from_file(uploaded_file)
-    # Extract the responsibilities using our updated function
     responsibilities = extract_responsibilities(text)
-    # Match skills based on the responsibilities
-    matched_skills = match_skills(responsibilities, skills_list)
+    matched_skills = match_skills(responsibilities, skills_list, threshold=0.3)
     
     st.subheader("Concise Job Responsibilities:")
-    st.write(responsibilities if responsibilities else "No responsibilities found.")
+    if responsibilities:
+        st.write(responsibilities)
+    else:
+        st.write("No clear responsibilities section found.")
     
     st.subheader("Matched Skills:")
-    st.write(", ".join(matched_skills) if matched_skills else "No matched skills.")
+    if matched_skills:
+        st.write(", ".join(matched_skills))
+    else:
+        st.write("No matched skills based on the selected diploma program's skill set.")
     
-    # Prepare output Excel file
+    # Optional: Generate an Excel file for download with the results
     df = pd.DataFrame({
         "Responsibilities": ["; ".join(responsibilities)],
         "Matched Skills": [", ".join(matched_skills)]
