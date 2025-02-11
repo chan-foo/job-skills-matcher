@@ -12,6 +12,7 @@ def load_similarity_model():
 
 model = load_similarity_model()
 
+# Default list of skills (can be customized by the user)
 DEFAULT_SKILLS = [
     "Basic Accounting and Bookkeeping", "Data Entry and Management", "Customer Service Skills",
     "Communication Skills", "Time Management", "Sales and Marketing Basics", "Problem-Solving Skills",
@@ -32,37 +33,72 @@ def extract_text_from_file(uploaded_file):
         return uploaded_file.read().decode("utf-8")
 
 def extract_responsibilities(text):
-    """Extract responsibilities from text by finding relevant sections."""
-    lines = text.split("\n")
+    """
+    Extracts the responsibilities section from the job description.
+    It looks for keywords like "responsibilities" and stops when it finds "qualifications" or "how to apply".
+    """
+    lower_text = text.lower()
+    start_index = lower_text.find("responsibilities")
+    if start_index == -1:
+        return ["No clear 'Responsibilities' section found."]
+    
+    # Try to find an end marker (like the next section header)
+    end_index = lower_text.find("qualifications", start_index)
+    if end_index == -1:
+        end_index = lower_text.find("how to apply", start_index)
+    if end_index == -1:
+        end_index = len(text)
+    
+    # Extract the block of text
+    block = text[start_index:end_index]
+    # Remove any colon or header text and split by newlines
+    lines = block.split("\n")
     responsibilities = []
-    capture = False
     for line in lines:
-        if "responsibilities" in line.lower() or "duties" in line.lower():
-            capture = True
-        elif capture and line.strip() == "":
-            break  # Stop capturing at the next blank line
-        elif capture:
-            responsibilities.append(line.strip())
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Remove the header line if it contains 'responsibilities'
+        if "responsibilities" in stripped.lower():
+            parts = stripped.split(":", 1)
+            if len(parts) > 1 and parts[1].strip():
+                responsibilities.append(parts[1].strip())
+        else:
+            responsibilities.append(stripped)
     return responsibilities
 
 def match_skills(responsibilities, skills):
-    """Match responsibilities with skills using semantic similarity."""
+    """
+    Matches the responsibilities text against the provided skills list using semantic similarity.
+    A lower threshold is used to capture more loosely related matches.
+    """
     responsibilities_str = " ".join(responsibilities)
     skills_embeddings = model.encode(skills, convert_to_tensor=True)
     responsibilities_embedding = model.encode(responsibilities_str, convert_to_tensor=True)
     similarities = util.cos_sim(responsibilities_embedding, skills_embeddings).flatten()
-    matched_skills = [skills[i] for i in range(len(skills)) if similarities[i] > 0.5]  # Threshold for similarity
+    
+    # Set a lower threshold to capture more matches
+    threshold = 0.3
+    matched_skills = [skills[i] for i in range(len(skills)) if similarities[i] > threshold]
     return matched_skills
 
+# Streamlit App Layout
 st.title("Job Description Skills Matcher")
+st.write("Upload a job description file to extract and match skills.")
 
+# File uploader for PDFs, DOCX, or TXT files
 uploaded_file = st.file_uploader("Choose a file (.pdf, .docx, or .txt)", type=["pdf", "docx", "txt"])
+
+# Allow user to provide a custom skills list
 custom_skills_input = st.text_area("Enter custom skills (comma-separated) or leave blank for default:", "")
 skills_list = [s.strip() for s in custom_skills_input.split(",")] if custom_skills_input else DEFAULT_SKILLS
 
 if uploaded_file:
+    # Extract text from the uploaded file
     text = extract_text_from_file(uploaded_file)
+    # Extract the responsibilities using our updated function
     responsibilities = extract_responsibilities(text)
+    # Match skills based on the responsibilities
     matched_skills = match_skills(responsibilities, skills_list)
     
     st.subheader("Concise Job Responsibilities:")
@@ -71,6 +107,7 @@ if uploaded_file:
     st.subheader("Matched Skills:")
     st.write(", ".join(matched_skills) if matched_skills else "No matched skills.")
     
+    # Prepare output Excel file
     df = pd.DataFrame({
         "Responsibilities": ["; ".join(responsibilities)],
         "Matched Skills": [", ".join(matched_skills)]
