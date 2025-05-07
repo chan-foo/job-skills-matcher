@@ -35,7 +35,7 @@ program_options = {
         "Presentation and public speaking", "Resilience and stress management", 
         "Emotional intelligence", "Analytical reasoning", "Proactive decision-making"
     ],
-    "One-Year Office Administrative Diploma": [
+    "One-Year Office Administrative Certificate": [
         "Office Administration", "Customer Service", "Communication Skills", "Data Entry",
         "Records Management", "Time Management", "Microsoft Office Proficiency", 
         "Team Coordination", "Organizational Skills", "Problem Solving", "Professionalism"
